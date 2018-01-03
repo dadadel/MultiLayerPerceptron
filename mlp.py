@@ -1,50 +1,59 @@
+#!/usr/bin/env python3
+
 import numpy as np
+try:
+    import matplotlib.pyplot as mp
+except:
+    mp = None
+
 
 def sigmoid(x):
     return 1/(1+np.exp(-x))
 
+
 def deriv_sigmoid(x):
     a = sigmoid(x)
     return a * (1 - a)
+
 
 def tanh(x):
     ep = np.exp(x)
     en = np.exp(-x)
     return (ep - en)/(ep + en)
 
+
 def deriv_tanh(x):
     a = tanh(x)
     return 1 - (a * a)
 
+
+def relu(x):
+    ret = 0
+    #fixme should map to compare
+    if x > 0:
+        ret = x
+    elif type(x) is np.ndarray:
+        ret = np.zeros(x.shape)
+    return ret
+
+def deriv_relu(x):
+    ret = 0
+    if z < 0:
+        ret = 0.01
+    else:
+        ret = 1
+
+def leaky_relu(x):
+    ret = 0.01 * x
+    #fixme should map to compare
+    if x > 0:
+        ret = x
+    elif type(x) is np.ndarray:
+        ret = np.ones(x.shape)*0.01
+    return ret
+
+
 class MultiLayerPerceptron(object):
-
-    @staticmethod
-    def relu(x):
-        ret = 0
-        #fixme should map to compare
-        if x > 0:
-            ret = x
-        elif type(x) is np.ndarray:
-            ret = np.zeros(x.shape)
-        return ret
-
-    @staticmethod
-    def deriv_relu(x):
-        ret = 0
-        if z < 0:
-            ret = 0.01
-        else:
-            ret = 1
-
-    @staticmethod
-    def leaky_relu(x):
-        ret = 0.01 * x
-        #fixme should map to compare
-        if x > 0:
-            ret = x
-        elif type(x) is np.ndarray:
-            ret = np.ones(x.shape)*0.01
-        return ret
 
     functions = {
         "sigmoid": {"function": sigmoid, "derivative": deriv_sigmoid},
@@ -52,7 +61,7 @@ class MultiLayerPerceptron(object):
         "relu": {"function": relu, "derivative": deriv_relu},
     }
 
-    def __init__(self, L=1, n=None, g=None, alpha=0.01):
+    def __init__(self, L=1, n=None, g=None, alpha=0.01, lambd=0):
         """Initializes network geometry and parameters
         :param L: number of layers including output and excluding input. Defaut 1.
         :type L: int
@@ -84,6 +93,7 @@ class MultiLayerPerceptron(object):
         self._Z = None
         self._m = 0
         self._alpha = alpha
+        self._lambda = lambd
 
     def set_all_input_examples(self, X, m=1):
         """Set the input examples.
@@ -153,6 +163,9 @@ class MultiLayerPerceptron(object):
     def get_output(self):
         return self._A[self._L]
 
+    def get_weights(self):
+        return self._W[1:]
+
     def back_propagation(self, get_cost_function=False):
         """Back propagation
 
@@ -169,8 +182,12 @@ class MultiLayerPerceptron(object):
         dA = [None] + [None] * self._L
         dA[l] = -self._Y/self._A[l] + ((1-self._Y)/(1-self._A[l]))
         if get_cost_function:
+            wnorms = 0
+            for w in self._W[1:]:
+                wnorms += np.linalg.norm(w)
             J = -1/m * ( np.dot(self._Y, np.log(self._A[l]).T) + \
-                         np.dot((1 - self._Y), np.log(1-self._A[l]).T) )
+                         np.dot((1 - self._Y), np.log(1-self._A[l]).T) ) + \
+                self._lambda/(2*m) * wnorms # regularization
 
         #dZ = self._A[l] - self._Y
         for l in range(self._L, 0, -1):
@@ -182,12 +199,13 @@ class MultiLayerPerceptron(object):
 #            dW[l] = 1/m * np.dot(dZ, self._A[l-1].T)
 #            db[l] = 1/m * np.sum(dZ, axis=1, keepdims=True)
         for l in range(self._L, 0, -1):
-            self._W[l] = self._W[l] - self._alpha * dW[l]
+            self._W[l] = self._W[l] - self._alpha * dW[l] - \
+                    (self._alpha*self._lambda/m * self._W[l]) # regularization
             self._b[l] = self._b[l] - self._alpha * db[l]
 
         return J
 
-    def minimize_cost(self, min_cost, max_iter=100000, alpha=None):
+    def minimize_cost(self, min_cost, max_iter=100000, alpha=None, plot=False):
         """Propagate forward then backward in loop while minimizing the cost function.
 
         :param min_cost: cost function value to reach in order to stop algo.
@@ -199,15 +217,24 @@ class MultiLayerPerceptron(object):
         if alpha is None:
             alpha = self._alpha
         self.propagate()
+        if plot:
+            y=[]
+            x=[]
         for i in range(max_iter):
             J = self.back_propagation(True)
+            if plot:
+                y.append(J[0][0])
+                x.append(nb_iter)
             self.propagate()
             nb_iter = i + 1
             if J <= min_cost:
                 break
+        if mp and plot:
+            mp.plot(x,y)
+            mp.show()
         return {"iterations": nb_iter, "cost_function": J}
 
-    def learning(self, X, Y, m, min_cost=0.05, max_iter=100000, alpha=None):
+    def learning(self, X, Y, m, min_cost=0.05, max_iter=100000, alpha=None, plot=False):
         """Tune parameters in order to learn examples by propagate and backpropagate.
 
         :param X: the inputs training examples
@@ -220,12 +247,12 @@ class MultiLayerPerceptron(object):
         """
         self.set_all_training_examples(X, Y, m)
         self.prepare()
-        res = self.minimize_cost(min_cost, max_iter, alpha)
+        res = self.minimize_cost(min_cost, max_iter, alpha, plot)
         return res
 
 
 if __name__ == "__main__":
-    mlp = MultiLayerPerceptron(L=2, n=[2, 3, 1], g=["tanh", "sigmoid"], alpha=2)
+    mlp = MultiLayerPerceptron(L=2, n=[2, 3, 1], g=["tanh", "sigmoid"], alpha=2, lambd=0.005)
     #mlp = MultiLayerPerceptron(L=1, n=[2, 1], g=["sigmoid"], alpha=0.1)
 
     X = np.array([[0, 0],
@@ -238,7 +265,15 @@ if __name__ == "__main__":
                   [1],
                   [0]])
 
-    res = mlp.learning(X.T, Y.T, 4)
+    res = mlp.learning(X.T, Y.T, 4, max_iter=5000, plot=True)
     print(res)
     print(mlp.get_output())
+    print(mlp.get_weights())
+    #mlp.set_all_training_examples(X.T, Y.T, 4)
+    #mlp.prepare()
+    #print(mlp.propagate())
+    #for i in range(100):
+    #    print(mlp.back_propagation())
+    #    mlp.propagate()
+    #print(mlp.propagate())
 
