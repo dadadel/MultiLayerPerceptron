@@ -78,7 +78,7 @@ class LettersData(object):
         """
         subvocab = {}
         i = 0
-        for c, info in self.vocab.items():
+        for c, info in sorted(self.vocab.items(), key=lambda x: x[0]):
             if info['count'] >= min_count:
                 subvocab[c] = {
                     'count': info['count'],
