@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import struct
 import numpy as np
 try:
     import matplotlib.pyplot as mp
@@ -87,6 +88,11 @@ def w_rand_softmax(n, l, factor=0.01):
 
 
 class MultiLayerPerceptron(object):
+    
+    param_type = {
+        "uint32": {"fmt": 'I', "size": 4},
+        "float64": {"fmt": 'd', "size": 8},
+    }
 
     functions = {
         "sigmoid": {"function": sigmoid, "derivative": deriv_sigmoid, "w_rand": w_rand_sigmoid, "name": "sigmoid"},
@@ -329,49 +335,12 @@ class MultiLayerPerceptron(object):
                     m = 1
                 else:
                     m = X.shape[1]
-            print("lenX,m",len(X),m)
+            #print("lenX,m",len(X),m)
             self.prepare(X, m)
         else:
             self.prepare()
         self.propagate()
         return self._A[self._L]
-
-    def get_output(self):
-        return self._A[self._L]
-
-    def get_expected_output(self):
-        return self._Y
-
-    def get_input(self):
-        return self._X
-
-    def get_weights(self):
-        return self._W[1:]
-
-    def get_bias(self):
-        return self._b[1:]
-
-    def set_flatten_weights(self, W):
-        """Set weights from a flatten list"""
-        shapes = [w.shape for w in self._W[1:]]
-        sizes = [w.size for w in self._W[1:]]
-        flat_size = sum(sizes)
-        assert(len(W) == flat_size)
-        ini = 0
-        for i, (size, shape) in enumerate(zip(sizes, shapes)):
-            self._W[1+i] = np.reshape(W[ini:ini+size], shape)
-            ini += size
-
-    def set_flatten_bias(self, B):
-        """Set bias from a flatten list"""
-        shapes = [b.shape for b in self._b[1:]]
-        sizes = [b.size for b in self._b[1:]]
-        flat_size = sum(sizes)
-        assert(len(B) == flat_size)
-        ini = 0
-        for i, (size, shape) in enumerate(zip(sizes, shapes)):
-            self._b[1+i] = np.reshape(B[ini:ini+size], shape)
-            ini += size
 
     def back_propagation(self, get_cost_function=False):
         """Back propagation
@@ -495,3 +464,148 @@ class MultiLayerPerceptron(object):
         res = self.minimize_cost(min_cost, max_iter, alpha, plot)
         return res
 
+
+    def get_output(self):
+        return self._A[self._L]
+
+    def get_expected_output(self):
+        return self._Y
+
+    def get_input(self):
+        return self._X
+
+    def get_weights(self):
+        return self._W[1:]
+
+    def get_bias(self):
+        return self._b[1:]
+
+    def set_flatten_weights(self, W):
+        """Set weights from a flatten list"""
+        shapes = [w.shape for w in self._W[1:]]
+        sizes = [w.size for w in self._W[1:]]
+        flat_size = sum(sizes)
+        assert(len(W) == flat_size)
+        ini = 0
+        for i, (size, shape) in enumerate(zip(sizes, shapes)):
+            self._W[1+i] = np.reshape(W[ini:ini+size], shape)
+            ini += size
+
+    def set_flatten_bias(self, B):
+        """Set bias from a flatten list"""
+        shapes = [b.shape for b in self._b[1:]]
+        sizes = [b.size for b in self._b[1:]]
+        flat_size = sum(sizes)
+        assert(len(B) == flat_size)
+        ini = 0
+        for i, (size, shape) in enumerate(zip(sizes, shapes)):
+            self._b[1+i] = np.reshape(B[ini:ini+size], shape)
+            ini += size
+
+    def load_weights(self, filename):
+        """"Load weights from file
+
+        :param filename: the file name
+        :return: True if success else False
+
+        """
+        ret = False
+        res = MultiLayerPerceptron.load_params(filename)
+        if res["result"]:
+            ret = True
+            self.set_flatten_weights(res["params"])
+        return ret
+
+    def save_weights(self, filename):
+        """Save weights to file
+
+        :param filename: the file name
+        :return: True if success else False
+
+        """
+        return MultiLayerPerceptron.save_params(self._W[1:], filename)
+
+    def load_bias(self, filename):
+        """"Load bias from file
+
+        :param filename: the file name
+        :return: True if success else False
+
+        """
+        ret = False
+        res = MultiLayerPerceptron.load_params(filename)
+        if res["result"]:
+            ret = True
+            self.set_flatten_bias(res["params"])
+        return ret
+
+    def save_bias(self, filename):
+        """Save bias to file
+
+        :param filename: the file name
+        :return: True if success else False
+
+        """
+        return MultiLayerPerceptron.save_params(self._b[1:], filename)
+
+    @staticmethod
+    def save_params(params, name):
+        """Save features to file
+        :param params: the features to save
+        :param name: the file name
+        :return: True if success else False
+        """
+        ret = False
+        param_type = MultiLayerPerceptron.param_type
+        # nb layers
+        nb = len(params)
+        # nbs features per layer
+        sizes = [p.size for p in params]
+        # packing format string
+        fmt = "<{fnb}{fsizes}{fparams}".format(
+            fnb=param_type["uint32"]["fmt"],
+            fsizes=param_type["uint32"]["fmt"]*nb,
+            fparams="".join([param_type["float64"]["fmt"]*n for n in sizes])
+        )
+        # build the list of sizes and all parameters
+        data = [nb] + sizes
+        for p in params:
+            data += p.flatten().tolist()
+        print(sizes)
+        # packing raw data
+        raw = struct.pack(fmt, *data)
+        print(len(raw))
+        # save
+        with open(name, "wb") as f:
+            f.write(raw)
+            ret = True
+        return ret
+
+    @staticmethod
+    def load_params(name):
+        """Load features from file.
+        A main list contains lists of all parameters for each layer
+
+        :return: dict with results with key: 'result' (True or False), 'params' (if success), 'sizes' (if success)
+        """
+        ret = {"result": False}
+        param_type = MultiLayerPerceptron.param_type
+        with open(name, "rb") as f:
+            # get nb layers
+            raw = f.read(param_type["uint32"]["size"])
+            fmt = "<{fnb}".format(fnb=param_type["uint32"]["fmt"])
+            nb = struct.unpack(fmt, raw)[0]
+            # get nbs features per layer
+            raw = f.read(param_type["uint32"]["size"]*nb)
+            fmt = "<{fsizes}".format(fsizes=param_type["uint32"]["fmt"]*nb)
+            sizes = struct.unpack(fmt, raw)
+            # get params
+            total = sum(sizes)
+            raw = f.read(param_type["float64"]["size"]*total)
+            fmt = "<{fparams}".format(fparams=param_type["float64"]["fmt"]*total)
+            params = struct.unpack(fmt, raw)
+            # result
+            ret["params"] = params
+            ret["sizes"] = sizes
+            ret["result"] = True
+        return ret
