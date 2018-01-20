@@ -67,7 +67,7 @@ class LettersData(object):
         self.letters_classes = {}
         """dict of letters with vector representation of each letter"""
 
-        for letter, idx in self.letter_to_int.items():
+        for letter, idx in sorted(self.letter_to_int.items(), key=lambda x: x[0]):
             cls = [0] * self.nb_vocab
             cls[idx] = 1
             self.letters_classes[letter] = cls
@@ -89,7 +89,7 @@ class LettersData(object):
         nb_vocab = len(subvocab)
         self.letter_to_vector = {}
         self.vector_to_letter = {}
-        for c in subvocab:
+        for c in sorted(subvocab):
             vec = [0] * nb_vocab
             vec[subvocab[c]['index']] = 1
             subvocab[c]['vector'] = vec
@@ -99,9 +99,11 @@ class LettersData(object):
     def get_letter_of_vector(self, vector):
         """Get the letter corresponding to a given vector.
 
+        :param vector: a flatten list representing the vector representation of a letter
         :return: the found letter else None
         """
         ret = None
+        assert(type(vector) is list)
         for letter, vec in self.letter_to_vector.items():
             if vec == vector:
                 ret = letter
