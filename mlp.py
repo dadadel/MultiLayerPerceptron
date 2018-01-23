@@ -342,40 +342,42 @@ class MultiLayerPerceptron(object):
         self.propagate()
         return self._A[self._L]
 
-    def back_propagation(self, get_cost_function=False):
-        """Back propagation
+    def compute_cost_function(self):
+        """Compute cost function:
+        J = -1/m((Y(A.T)) + (1-Y)(A.T))
+        if self._regularization is True will add:
+        J += lamda/(2*m)*Wnorm
 
-        :param get_cost_function: if True the cost function J
-            will be computed and returned.
-            J = -1/m((Y(A.T)) + (1-Y)(A.T))
-            if self._regularization will add:
-            J += lamda/(2*m)*Wnorm
-        :return: the cost function if get_cost_function==True else None
+        :return: the cost function result
 
         """
+        L = self._L
+        m = self._m
         J = None
+        # Compute cost function
+        if self._softmax:
+            # case of softmax multi-class
+            loss = -np.sum(self._Y * np.log(self._A[L]), axis=0)
+            J = 1/m * np.sum(loss)
+        else:
+            J = -1/m * np.sum(( np.dot(self._Y, np.log(self._A[L]).T) + \
+                         np.dot((1 - self._Y), np.log(1-self._A[L]).T) ), axis=1)
+        # add regularization
+        if self._regularization:
+            wnorms = 0
+            for w in self._W[1:]:
+                wnorms += np.linalg.norm(w)
+            J += self._lambda_regul/(2*m) * wnorms
+        return J
+
+    def back_propagation(self, get_cost_function=False):
+        """Back propagation"""
         L = self._L
         m = self._m
         dW = [None] + [None] * self._L
         db = [None] + [None] * self._L
         dA = [None] + [None] * self._L
         dA[L] = -self._Y/self._A[L] + ((1-self._Y)/(1-self._A[L]))
-
-        # Compute cost function
-        if get_cost_function:
-            if self._softmax:
-                # case of softmax multi-class
-                loss = -np.sum(self._Y * np.log(self._A[L]), axis=0)
-                J = 1/m * np.sum(loss)
-            else:
-                J = -1/m * np.sum(( np.dot(self._Y, np.log(self._A[L]).T) + \
-                             np.dot((1 - self._Y), np.log(1-self._A[L]).T) ), axis=1)
-            # add regularization
-            if self._regularization:
-                wnorms = 0
-                for w in self._W[1:]:
-                    wnorms += np.linalg.norm(w)
-                J += self._lambda_regul/(2*m) * wnorms
 
         # Compute weights derivatives
         for l in range(L, 0, -1):
@@ -417,30 +419,34 @@ class MultiLayerPerceptron(object):
                 self._W[l] = self._W[l] - self._alpha * w_factor
             self._b[l] = self._b[l] - self._alpha * b_factor
 
-        return J
-
     def minimize_cost(self, min_cost, max_iter=100000, alpha=None, plot=False):
         """Propagate forward then backward in loop while minimizing the cost function.
 
         :param min_cost: cost function value to reach in order to stop algo.
         :param max_iter: maximum number of iterations to reach min cost befor stoping algo. (Default 100000).
         :param alpha: learning rate, if None use the instance alpha value. Default None.
+        :param plot: if True will plot the graph cost function depending on iteration
 
         """
         nb_iter = 0
         if alpha is None:
             alpha = self._alpha
+        # forward propagation
         self.propagate()
         if plot:
             y=[]
             x=[]
         for i in range(max_iter):
-            J = self.back_propagation(True)
+            nb_iter = i + 1
+            # compute cost function
+            J = self.compute_cost_function()
             if plot:
                 y.append(J)
                 x.append(nb_iter)
+            # back propagation
+            self.back_propagation()
+            # forward propagation
             self.propagate()
-            nb_iter = i + 1
             if J <= min_cost:
                 break
         if mp and plot:
