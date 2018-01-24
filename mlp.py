@@ -149,6 +149,10 @@ class MultiLayerPerceptron(object):
         assert(len(self._g) == len(self._W))
         assert(len(self._g) == len(self._b))
         assert(len(self._g) == len(self._n))
+        self._bacthes_x = []
+        self._bacthes_y = []
+        self._current_batch = 0
+        self._nb_batches = 0
 
     def init_random_weights(self, use_formula=False, w_rand_factor=1):
         """Initialize randomly weights using a factor or using some formula
@@ -274,6 +278,29 @@ class MultiLayerPerceptron(object):
         self.set_all_input_examples(X, m)
         self.set_all_expected_output_examples(Y, m)
 
+    def set_batches(self, batches):
+        """Set the batch for training. dimensions are nb_minibatches, exemples (in/out->2), minibatch lengths
+        """
+        self._batch_x = []
+        self._batch_y = []
+        self._batch_m = []
+        for b in batches:
+            self._batch_x.append(np.array(b[0]).T)
+            self._batch_y.append(np.array(b[1]).T)
+            self._batch_m.append(len(b[0]))
+        self._current_batch = 0
+        self._nb_batches = len(batches)
+
+    def get_next_batch(self):
+        """Get the current mini-bacth and update to next the current. If reaches the end then go back to first.
+        """
+        X = self._batch_x[self._current_batch]
+        Y = self._batch_y[self._current_batch]
+        self._current_batch += 1
+        if self._current_batch >= self._nb_batches:
+            self._current_batch = 0
+        return X, Y
+
     def prepare(self, X=None, m=None, force=False):
         """Prepare network for propagation"""
         if X is not None:
@@ -370,7 +397,7 @@ class MultiLayerPerceptron(object):
             J += self._lambda_regul/(2*m) * wnorms
         return J
 
-    def back_propagation(self, get_cost_function=False):
+    def back_propagation(self):
         """Back propagation"""
         L = self._L
         m = self._m
@@ -454,6 +481,45 @@ class MultiLayerPerceptron(object):
             mp.show()
         return {"iterations": nb_iter, "cost_function": J}
 
+    def minimize_cost_batches(self, min_cost, max_iter=100000, alpha=None, plot=False):
+        """Propagate forward then backward in loop while minimizing the cost function.
+
+        :param min_cost: cost function value to reach in order to stop algo.
+        :param max_iter: maximum number of iterations to reach min cost befor stoping algo. (Default 100000).
+        :param alpha: learning rate, if None use the instance alpha value. Default None.
+        :param plot: if True will plot the graph cost function depending on iteration
+
+        """
+        nb_iter = 0
+        if alpha is None:
+            alpha = self._alpha
+        if plot:
+            y=[]
+            x=[]
+        for i in range(max_iter):
+            nb_iter = i + 1
+            tot_j = 0
+            for t in range(self._nb_batches):
+                X, Y = self.get_next_batch()
+                self.set_all_training_examples(X, Y, self._batch_m[t])
+                self.prepare()
+                # forward propagation
+                self.propagate()
+                # compute cost function
+                J = self.compute_cost_function()
+                # back propagation
+                self.back_propagation()
+                tot_j += J / self._nb_batches
+            if plot:
+                y.append(tot_j)
+                x.append(nb_iter)
+            #if tot_j <= min_cost:
+            #    break
+        if mp and plot:
+            mp.plot(x,y)
+            mp.show()
+        return {"iterations": nb_iter, "cost_function": tot_j}
+
     def learning(self, X, Y, m, min_cost=0.05, max_iter=100000, alpha=None, plot=False):
         """Tune parameters in order to learn examples by propagate and backpropagate.
 
@@ -470,6 +536,19 @@ class MultiLayerPerceptron(object):
         res = self.minimize_cost(min_cost, max_iter, alpha, plot)
         return res
 
+    def learning_batches(self, min_cost=0.05, max_iter=100000, alpha=None, plot=False):
+        """Tune parameters in order to learn examples by propagate and backpropagate.
+
+        :param X: the inputs training examples
+        :param Y: the expected outputs training examples
+        :param m: the number of examples
+        :param min_cost: cost function value to reach in order to stop algo. Default 0.0.5
+        :param max_iter: maximum number of iterations to reach min cost befor stoping algo. (Default 100000).
+        :param alpha: learning rate, if None use the instance alpha value. Default None.
+
+        """
+        res = self.minimize_cost_batches(min_cost, max_iter, alpha, plot)
+        return res
 
     def get_output(self):
         return self._A[self._L]
