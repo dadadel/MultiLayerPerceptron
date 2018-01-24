@@ -1,3 +1,6 @@
+__author__ = "Adel Daouzli"
+__licence__ = "GPLv3"
+
 import os
 from pnmimage import PnmImage
 

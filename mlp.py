@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
 
+__author__ = "Adel Daouzli"
+__licence__ = "GPLv3"
+
 import struct
 import numpy as np
 try:
